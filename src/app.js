@@ -3,20 +3,21 @@ const express=require('express');
 const app=express();
 const path=require("path");
 const hbs=require("hbs");
-
+const cookieParser=require("cookie-parser")
 const bcrypt=require("bcryptjs");
 const jwt=require("jsonwebtoken");
+const auth=require("./middleware/auth");
 
 require("./db/conn");
 const register=require("./models/registers")
 
-const port=process.env.PORT || 8000;
+const port=process.env.PORT || 3000;
 
-console.log(process.env.SECRET_KEY);
 
 app.use(express.json());
 app.use(express.urlencoded({extended:false})) //imp
 app.use(express.static("public"))
+app.use(cookieParser());
 
 const template_path=path.join(__dirname,"../templates/views");
 const partials_path=path.join(__dirname,"../templates/partials");
@@ -26,9 +27,39 @@ app.set("views",template_path);
 app.set("view engine","hbs");
 hbs.registerPartials(partials_path);
 
-app.get("/",async(req,res)=>{
+app.get("/",(req,res)=>{
     res.render("index");
 });
+
+app.get("/secret",auth,(req,res)=>{
+    console.log(`this is cookies ${req.cookies.jwt}`)
+    res.render("secret");
+});
+
+app.get("/logout",auth,async(req,res)=>{
+    try{
+        console.log(req.user);
+
+        //for single device
+        // req.user.token=req.user.tokens.filter((elem)=>{
+        //     return elem.token!=req.token
+        // })
+
+        //for all devices
+        req.user.tokens=[];
+
+        res.clearCookie("jwt");
+
+        console.log("logout successful....")
+
+        await req.user.save();
+        res.render("logout");
+
+    }
+    catch(err){
+        res.send(err);
+    }
+})
 
 app.get("/register",(req,res)=>{
     res.render("register")
@@ -54,6 +85,12 @@ app.post("/register",async(req,res)=>{
 
             const token=await employee.generateAuthToken();
             console.log(`token is ${token}`);
+
+            res.cookie("jwt",token,{
+                expires:new Date(Date.now()+5000),
+                httpOnly:true
+            });
+            console.log(cookie);
 
             const registered=await employee.save();
 
@@ -89,9 +126,15 @@ app.post("/login",async(req,res)=>{
         // console.log(userEmail.password);
 
         const token=await userEmail.generateAuthToken();
-        console.log(`token is ${token}`);
+        console.log(`login token is ${token}`);
 
-        // 
+        res.cookie("jwt",token,{
+            expires:new Date(Date.now()+60000),
+            httpOnly:true
+        });
+        console.log(cookie);
+
+        
         if(isMatch){
             res.render("index");
         }
@@ -99,9 +142,9 @@ app.post("/login",async(req,res)=>{
             res.send("invalid details");
         }
     }
-    catch(er){
-        res.status(404);
-        res.render(er);
+    catch(err){
+        // res.status(404);
+        res.send(err);
     }
 })
 
